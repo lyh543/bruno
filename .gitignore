@@ -63,8 +63,6 @@ tests/benchmarks/results/
 /benchmark-report/
 
 # Development plan files
-CLAUDE.md
-AGENTS.md
 *.plan.md
 
 # packages dist
