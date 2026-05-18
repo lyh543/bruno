@@ -78,6 +78,9 @@ function forceInstallPlatformDeps() {
 
 async function setup() {
   try {
+    // Setup git remotes
+    execCommand('git remote add origin-bruno https://github.com/usebruno/bruno.git 2>/dev/null || true', 'Setting up git remotes');
+
     // Clean up node_modules (if exists)
     console.log(`\n${icons.clean} Cleaning up node_modules directories...`);
     const nodeModulesPaths = glob('.', 'node_modules');

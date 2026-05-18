@@ -54,6 +54,7 @@
   },
   "scripts": {
     "setup": "node ./scripts/setup.js",
+    "update:bruno": "git fetch origin-bruno && git checkout main && git merge origin-bruno/main && git checkout -",
     "watch:converters": "npm run watch --workspace=packages/bruno-converters",
     "dev": "node ./scripts/dev.js",
     "watch": "npm run dev:watch",
