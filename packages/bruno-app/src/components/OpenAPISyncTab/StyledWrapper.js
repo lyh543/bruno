@@ -757,6 +757,30 @@ const StyledWrapper = styled.div`
     }
   }
 
+  .source-mode-buttons {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+
+    button {
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 500;
+      border: 1px solid ${(props) => props.theme.border.border1};
+      background: ${(props) => props.theme.background.default};
+      color: ${(props) => props.theme.colors.text.subtext0};
+      transition: all 0.15s;
+
+      &.active {
+        border-color: ${(props) => props.theme.button2.color.primary.border};
+        background: ${(props) => props.theme.button2.color.primary.bg};
+        color: ${(props) => props.theme.button2.color.primary.text};
+      }
+    }
+  }
+
   /* State Messages */
   .state-message {
     display: flex;
@@ -2263,7 +2287,7 @@ const StyledWrapper = styled.div`
     }
   }
 
-  /* URL/File mode toggle in setup form and settings modal */
+  /* Legacy URL/File mode toggle styling */
   .setup-mode-toggle {
     display: inline-flex;
     flex-shrink: 0;
@@ -2321,6 +2345,40 @@ const StyledWrapper = styled.div`
 
   .auth-grid-three {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .settings-dropdown {
+    width: 100%;
+
+    .dropdown {
+      width: 100%;
+    }
+
+    .settings-dropdown-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+
+      &:hover {
+        border-color: ${(props) => props.theme.input.focusBorder};
+      }
+    }
+
+    .settings-dropdown-value {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .settings-dropdown-caret {
+      color: ${(props) => props.theme.colors.text.muted};
+      fill: ${(props) => props.theme.colors.text.muted};
+      flex-shrink: 0;
+    }
   }
 
   .auth-helper-text {

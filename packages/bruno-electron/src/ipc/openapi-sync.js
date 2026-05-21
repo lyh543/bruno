@@ -299,6 +299,20 @@ const parseSpec = (content) => {
   }
 };
 
+const looksLikeHtmlDocument = (content = '') => {
+  const normalized = String(content).trimStart().toLowerCase();
+  return normalized.startsWith('<!doctype html') || normalized.startsWith('<html') || normalized.startsWith('<head') || normalized.startsWith('<body');
+};
+
+const formatSpecParseError = (sourceUrl, content, error) => {
+  if (looksLikeHtmlDocument(content)) {
+    return `The URL returned HTML instead of an OpenAPI document. Check that ${sourceUrl} points directly to the raw openapi.json/openapi.yaml file.`;
+  }
+
+  const reason = error?.reason || error?.message || 'Unable to parse the response as JSON or YAML';
+  return `Failed to parse OpenAPI document from ${sourceUrl}: ${reason}`;
+};
+
 /**
  * Validate that a parsed spec object is a valid OpenAPI 3.x document.
  * Swagger 2.0 is not supported — the converter only handles OpenAPI 3.x.
@@ -377,7 +391,16 @@ const fetchSpecFromSource = async ({ collectionUid, collectionPath, sourceUrl, e
     }
   }
 
-  const spec = parseSpec(content);
+  let spec;
+  try {
+    spec = parseSpec(content);
+  } catch (parseError) {
+    return {
+      error: formatSpecParseError(sourceUrl, content, parseError),
+      errorCode: looksLikeHtmlDocument(content) ? 'SOURCE_RETURNED_HTML' : 'SOURCE_PARSE_FAILED'
+    };
+  }
+
   return { content, spec };
 };
 

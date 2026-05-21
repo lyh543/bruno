@@ -5,6 +5,7 @@ import { isHttpUrl } from 'utils/url/index';
 import { isOpenApiSpec } from 'utils/importers/openapi-collection';
 import { parseFileAsJsonOrYaml } from 'utils/importers/file-reader';
 import AuthSettingsFields, { normalizeOpenApiAuth } from '../AuthSettingsFields';
+import SourceModeToggle from '../SourceModeToggle';
 
 const FEATURES = [
   'Detect new, modified, and removed endpoints',
@@ -35,26 +36,13 @@ const ConnectSpecForm = ({ sourceUrl, setSourceUrl, isLoading, error, setError, 
       >
         <label className="url-label">OpenAPI Specification</label>
         <div className="url-row">
-          <div className="setup-mode-toggle">
-            <button
-              type="button"
-              className={`setup-mode-btn ${mode === 'url' ? 'active' : ''}`}
-              onClick={() => {
-                setMode('url'); setSourceUrl('');
-              }}
-            >
-              URL
-            </button>
-            <button
-              type="button"
-              className={`setup-mode-btn ${mode === 'file' ? 'active' : ''}`}
-              onClick={() => {
-                setMode('file'); setSourceUrl('');
-              }}
-            >
-              File
-            </button>
-          </div>
+          <SourceModeToggle
+            value={mode}
+            onChange={(nextMode) => {
+              setMode(nextMode);
+              setSourceUrl('');
+            }}
+          />
 
           {mode === 'url' ? (
             <input

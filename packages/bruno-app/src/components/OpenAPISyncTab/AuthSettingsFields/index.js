@@ -1,4 +1,5 @@
 import React from 'react';
+import SettingsDropdown from '../SettingsDropdown';
 
 export const createDefaultOpenApiAuth = () => ({
   mode: 'none',
@@ -50,6 +51,11 @@ const AUTH_MODE_OPTIONS = [
   { value: 'bearer', label: 'Bearer Token' },
   { value: 'apikey', label: 'API Key' },
   { value: 'custom-headers', label: 'Custom Headers' }
+];
+
+const API_KEY_PLACEMENT_OPTIONS = [
+  { value: 'header', label: 'Header' },
+  { value: 'query', label: 'Query' }
 ];
 
 const AuthSettingsFields = ({ value, onChange, label = 'Authentication' }) => {
@@ -108,15 +114,12 @@ const AuthSettingsFields = ({ value, onChange, label = 'Authentication' }) => {
   return (
     <div className="settings-field">
       <label className="settings-label">{label}</label>
-      <select
-        className="settings-input"
+      <SettingsDropdown
+        options={AUTH_MODE_OPTIONS}
         value={auth.mode}
-        onChange={(event) => updateAuth({ mode: event.target.value })}
-      >
-        {AUTH_MODE_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
+        onChange={(nextMode) => updateAuth({ mode: nextMode })}
+        placeholder="Select authentication"
+      />
 
       {auth.mode === 'basic' && (
         <div className="auth-grid">
@@ -165,14 +168,12 @@ const AuthSettingsFields = ({ value, onChange, label = 'Authentication' }) => {
             onChange={(event) => updateSection('apikey', { value: event.target.value })}
             placeholder="Value or {{API_KEY}}"
           />
-          <select
-            className="settings-input"
+          <SettingsDropdown
+            options={API_KEY_PLACEMENT_OPTIONS}
             value={auth.apikey.placement}
-            onChange={(event) => updateSection('apikey', { placement: event.target.value })}
-          >
-            <option value="header">Header</option>
-            <option value="query">Query</option>
-          </select>
+            onChange={(placement) => updateSection('apikey', { placement })}
+            placeholder="Select placement"
+          />
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { isHttpUrl } from 'utils/url/index';
 import { isOpenApiSpec } from 'utils/importers/openapi-collection';
 import { parseFileAsJsonOrYaml } from 'utils/importers/file-reader';
 import AuthSettingsFields, { normalizeOpenApiAuth } from '../AuthSettingsFields';
+import SourceModeToggle from '../SourceModeToggle';
 
 const ConnectionSettingsModal = ({ collection, sourceUrl, onSave, onDisconnect, onClose }) => {
   const openApiSyncConfig = collection?.brunoConfig?.openapi?.[0];
@@ -49,22 +50,7 @@ const ConnectionSettingsModal = ({ collection, sourceUrl, onSave, onDisconnect, 
         <div className="settings-body">
           <div className="settings-field">
             <label className="settings-label">Spec Source</label>
-            <div className="setup-mode-toggle" style={{ marginBottom: '8px' }}>
-              <button
-                type="button"
-                className={`setup-mode-btn ${mode === 'url' ? 'active' : ''}`}
-                onClick={() => setMode('url')}
-              >
-                URL
-              </button>
-              <button
-                type="button"
-                className={`setup-mode-btn ${mode === 'file' ? 'active' : ''}`}
-                onClick={() => setMode('file')}
-              >
-                File
-              </button>
-            </div>
+            <SourceModeToggle value={mode} onChange={setMode} className="mb-2" />
 
             {mode === 'url' ? (
               <input

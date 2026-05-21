@@ -6,6 +6,8 @@ import { isHttpUrl } from 'utils/url';
 import { parseFileAsJsonOrYaml } from 'utils/importers/file-reader';
 import { isOpenApiSpec } from 'utils/importers/openapi-collection';
 import AuthSettingsFields, { normalizeOpenApiAuth } from 'components/OpenAPISyncTab/AuthSettingsFields';
+import SettingsDropdown from 'components/OpenAPISyncTab/SettingsDropdown';
+import SourceModeToggle from 'components/OpenAPISyncTab/SourceModeToggle';
 
 const INTERVALS = [5, 15, 30, 60];
 
@@ -27,6 +29,10 @@ const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose 
 
   const sourceUrl = mode === 'url' ? url.trim() : filePath;
   const canSave = selectedCollection && (mode === 'url' ? isHttpUrl(sourceUrl) : !!sourceUrl);
+  const collectionOptions = useMemo(() => collections.map((collection) => ({
+    value: collection.uid,
+    label: collection.name
+  })), [collections]);
 
   const handleSubmit = async () => {
     if (!selectedCollection || !sourceUrl) {
@@ -56,23 +62,17 @@ const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose 
         <div className="settings-body">
           <div className="settings-field">
             <label className="settings-label">Collection</label>
-            <select className="settings-input" value={collectionUid} onChange={(event) => setCollectionUid(event.target.value)}>
-              {collections.map((collection) => (
-                <option key={collection.uid} value={collection.uid}>{collection.name}</option>
-              ))}
-            </select>
+            <SettingsDropdown
+              options={collectionOptions}
+              value={collectionUid}
+              onChange={setCollectionUid}
+              placeholder="Select a collection"
+            />
           </div>
 
           <div className="settings-field">
             <label className="settings-label">Spec Source</label>
-            <div className="setup-mode-toggle" style={{ marginBottom: '8px' }}>
-              <button type="button" className={`setup-mode-btn ${mode === 'url' ? 'active' : ''}`} onClick={() => setMode('url')}>
-                URL
-              </button>
-              <button type="button" className={`setup-mode-btn ${mode === 'file' ? 'active' : ''}`} onClick={() => setMode('file')}>
-                File
-              </button>
-            </div>
+            <SourceModeToggle value={mode} onChange={setMode} className="mb-2" />
 
             {mode === 'url' ? (
               <input

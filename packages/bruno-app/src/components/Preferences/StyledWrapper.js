@@ -170,6 +170,16 @@ const StyledWrapper = styled.div`
   }
 
   .settings-modal {
+    font-family: inherit;
+
+    button,
+    input,
+    select,
+    option,
+    textarea {
+      font-family: inherit;
+    }
+
     .settings-field {
       margin-bottom: 16px;
 
@@ -190,7 +200,6 @@ const StyledWrapper = styled.div`
       width: 100%;
       padding: 7px 10px;
       font-size: 12px;
-      font-family: monospace;
       color: ${(props) => props.theme.text};
       border: 1px solid ${(props) => props.theme.border.border1};
       border-radius: 5px;
@@ -209,6 +218,40 @@ const StyledWrapper = styled.div`
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+    }
+
+    .settings-dropdown {
+      width: 100%;
+
+      .dropdown {
+        width: 100%;
+      }
+
+      .settings-dropdown-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        cursor: pointer;
+
+        &:hover {
+          border-color: ${(props) => props.theme.input.focusBorder};
+        }
+      }
+
+      .settings-dropdown-value {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .settings-dropdown-caret {
+        color: ${(props) => props.theme.colors.text.muted};
+        fill: ${(props) => props.theme.colors.text.muted};
+        flex-shrink: 0;
       }
     }
 
@@ -235,6 +278,7 @@ const StyledWrapper = styled.div`
       height: 20px;
       border-radius: 10px;
       border: none;
+      font: inherit;
       cursor: pointer;
       padding: 0;
       flex-shrink: 0;
@@ -270,6 +314,32 @@ const StyledWrapper = styled.div`
 
       button {
         padding: 5px 12px;
+        font-family: inherit;
+        font-size: 12px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: 500;
+        border: 1px solid ${(props) => props.theme.border.border1};
+        background: ${(props) => props.theme.background.default};
+        color: ${(props) => props.theme.colors.text.subtext0};
+        transition: all 0.15s;
+
+        &.active {
+          border-color: ${(props) => props.theme.button2.color.primary.border};
+          background: ${(props) => props.theme.button2.color.primary.bg};
+          color: ${(props) => props.theme.button2.color.primary.text};
+        }
+      }
+    }
+
+    .source-mode-buttons {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+
+      button {
+        padding: 5px 12px;
+        font-family: inherit;
         font-size: 12px;
         border-radius: 5px;
         cursor: pointer;
