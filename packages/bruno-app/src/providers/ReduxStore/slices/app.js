@@ -47,6 +47,10 @@ const initialState = {
     general: {
       defaultLocation: ''
     },
+    openapi: {
+      pollingEnabled: true,
+      defaultInterval: 5
+    },
     onboarding: {
       hasLaunchedBefore: false,
       hasSeenWelcomeModal: true

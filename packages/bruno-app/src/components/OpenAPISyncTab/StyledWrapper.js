@@ -2308,6 +2308,66 @@ const StyledWrapper = styled.div`
     color: ${(props) => props.theme.colors.text.muted};
   }
 
+  .auth-inline-panel {
+    margin-top: 1rem;
+  }
+
+  .auth-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .auth-grid-three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .auth-helper-text {
+    margin-top: 8px;
+    font-size: ${(props) => props.theme.font.size.xs};
+    color: ${(props) => props.theme.colors.text.muted};
+  }
+
+  .auth-custom-headers {
+    margin-top: 10px;
+  }
+
+  .auth-custom-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .auth-custom-header-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .auth-link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: ${(props) => props.theme.font.size.xs};
+    color: ${(props) => props.theme.status.info.text};
+
+    &.danger {
+      color: ${(props) => props.theme.colors.text.danger};
+    }
+  }
+
+  .auth-empty-state {
+    font-size: ${(props) => props.theme.font.size.xs};
+    color: ${(props) => props.theme.colors.text.muted};
+    padding: 8px 0;
+  }
+
   /* File not found banner */
   .file-not-found-banner {
     display: flex;

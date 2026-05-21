@@ -5,6 +5,7 @@ import Modal from 'components/Modal';
 import { isHttpUrl } from 'utils/url/index';
 import { isOpenApiSpec } from 'utils/importers/openapi-collection';
 import { parseFileAsJsonOrYaml } from 'utils/importers/file-reader';
+import AuthSettingsFields, { normalizeOpenApiAuth } from '../AuthSettingsFields';
 
 const ConnectionSettingsModal = ({ collection, sourceUrl, onSave, onDisconnect, onClose }) => {
   const openApiSyncConfig = collection?.brunoConfig?.openapi?.[0];
@@ -16,6 +17,7 @@ const ConnectionSettingsModal = ({ collection, sourceUrl, onSave, onDisconnect, 
   const [filePath, setFilePath] = useState(isUrl ? '' : normalizedSourceUrl);
   const [autoCheck, setAutoCheck] = useState(openApiSyncConfig?.autoCheck !== false);
   const [checkInterval, setCheckInterval] = useState(openApiSyncConfig?.autoCheckInterval || 5);
+  const [auth, setAuth] = useState(normalizeOpenApiAuth(openApiSyncConfig?.auth));
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -27,7 +29,7 @@ const ConnectionSettingsModal = ({ collection, sourceUrl, onSave, onDisconnect, 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onSave({ sourceUrl: effectiveSource, autoCheck, autoCheckInterval: checkInterval });
+      await onSave({ sourceUrl: effectiveSource, autoCheck, autoCheckInterval: checkInterval, auth });
       onClose();
     } catch (_) {
       // caller (handleSaveSettings) already shows a toast on failure
@@ -142,6 +144,8 @@ const ConnectionSettingsModal = ({ collection, sourceUrl, onSave, onDisconnect, 
               </div>
             </div>
           )}
+
+          <AuthSettingsFields value={auth} onChange={setAuth} />
         </div>
 
         <div className="settings-footer">

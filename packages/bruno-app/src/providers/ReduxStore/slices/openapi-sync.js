@@ -1,5 +1,8 @@
 import { createSlice } from '@reduxjs/toolkit';
+import React from 'react';
+import toast from 'react-hot-toast';
 import { normalizePath } from 'utils/common/path';
+import { addTab } from './tabs';
 
 const initialState = {
   // Map of collectionUid -> { hasUpdates, lastChecked, error }
@@ -160,20 +163,37 @@ export const {
   clearOpenApiSyncTabState
 } = openapiSyncSlice.actions;
 
+const getPrimaryOpenApiSource = (collection) => {
+  const entries = Array.isArray(collection?.brunoConfig?.openapi) ? collection.brunoConfig.openapi : [];
+  return entries.find((entry) => entry?.sourceUrl) || entries[0] || null;
+};
+
+const OpenApiUpdateToast = ({ collectionName, onOpen }) => {
+  return (
+    <div className="bruno-toast-card">
+      <div className="bruno-toast-title">OpenAPI updates available</div>
+      <div className="bruno-toast-copy">{collectionName} has remote spec changes waiting for review.</div>
+      <button type="button" className="bruno-toast-link" onClick={onOpen}>Open Sync Tab</button>
+    </div>
+  );
+};
+
 // Lightweight thunk for polling — only checks hash, no deep comparison
-export const checkCollectionForUpdates = (collection) => async (dispatch) => {
-  if (!collection?.brunoConfig?.openapi?.[0]?.sourceUrl) {
+export const checkCollectionForUpdates = (collection) => async (dispatch, getState) => {
+  const syncConfig = getPrimaryOpenApiSource(collection);
+  if (!syncConfig?.sourceUrl) {
     return null;
   }
 
   try {
     const { ipcRenderer } = window;
-    const syncConfig = collection.brunoConfig.openapi[0];
+    const previousUpdate = getState().openapiSync?.collectionUpdates?.[collection.uid];
     const result = await ipcRenderer.invoke('renderer:check-openapi-updates', {
       collectionUid: collection.uid,
       collectionPath: collection.pathname,
       sourceUrl: syncConfig.sourceUrl,
       storedSpecHash: syncConfig.specHash || null,
+      auth: syncConfig.auth,
       environmentContext: {
         activeEnvironmentUid: collection.activeEnvironmentUid,
         environments: collection.environments,
@@ -187,6 +207,20 @@ export const checkCollectionForUpdates = (collection) => async (dispatch) => {
       hasUpdates: result.hasUpdates || false,
       error: result.error || null
     }));
+
+    if (result.hasUpdates && !previousUpdate?.hasUpdates) {
+      toast.custom(
+        <OpenApiUpdateToast
+          collectionName={collection.name}
+          onOpen={() => dispatch(addTab({
+            uid: `${collection.uid}-openapi-sync`,
+            collectionUid: collection.uid,
+            type: 'openapi-sync'
+          }))}
+        />,
+        { duration: 6000 }
+      );
+    }
 
     return result;
   } catch (error) {
@@ -207,21 +241,22 @@ export const checkActiveWorkspaceCollectionsForUpdates = () => async (dispatch, 
   const { workspaces, activeWorkspaceUid } = state.workspaces;
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
   const now = Date.now();
+  const defaultInterval = state.app?.preferences?.openapi?.defaultInterval || 5;
 
   // Filter to active workspace collections that have OpenAPI sync configured and auto-check enabled
   const syncableCollections = collections.filter((c) => {
     if (!activeWorkspace?.collections?.some((wc) => normalizePath(wc.path) === normalizePath(c.pathname))) {
       return false;
     }
-    const syncConfig = c.brunoConfig?.openapi?.[0];
+    const syncConfig = getPrimaryOpenApiSource(c);
     if (!syncConfig?.sourceUrl) return false;
     if (syncConfig.autoCheck === false) return false;
     return true;
   });
 
   for (const collection of syncableCollections) {
-    const syncConfig = collection.brunoConfig.openapi[0];
-    const intervalMs = (syncConfig.autoCheckInterval || 5) * 60 * 1000;
+    const syncConfig = getPrimaryOpenApiSource(collection);
+    const intervalMs = (syncConfig.autoCheckInterval || defaultInterval) * 60 * 1000;
     const lastChecked = state.openapiSync?.collectionUpdates?.[collection.uid]?.lastChecked || 0;
 
     // Only check if enough time has elapsed since last check for this collection

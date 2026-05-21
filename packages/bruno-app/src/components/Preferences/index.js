@@ -10,7 +10,8 @@ import {
   IconKeyboard,
   IconZoomQuestion,
   IconSquareLetterB,
-  IconDatabase
+  IconDatabase,
+  IconApi
 } from '@tabler/icons';
 
 import Support from './Support';
@@ -20,6 +21,7 @@ import Proxy from './ProxySettings';
 import Display from './Display';
 import Keybindings from './Keybindings';
 import Beta from './Beta';
+import OpenAPI from './OpenAPI';
 
 import StyledWrapper from './StyledWrapper';
 import Cache from './Cache/index';
@@ -64,6 +66,10 @@ const Preferences = () => {
         return <Beta />;
       }
 
+      case 'openapi': {
+        return <OpenAPI />;
+      }
+
       case 'support': {
         return <Support />;
       }
@@ -101,6 +107,10 @@ const Preferences = () => {
           <div className={getTabClassname('cache')} role="tab" onClick={() => setTab('cache')}>
             <IconDatabase size={16} strokeWidth={1.5} />
             Cache
+          </div>
+          <div className={getTabClassname('openapi')} role="tab" onClick={() => setTab('openapi')}>
+            <IconApi size={16} strokeWidth={1.5} />
+            OpenAPI
           </div>
           <div className={getTabClassname('support')} role="tab" onClick={() => setTab('support')}>
             <IconZoomQuestion size={16} strokeWidth={1.5} />

@@ -17,6 +17,7 @@ const { getEnvVars } = require('../utils/collection');
 const { getProcessEnvVars } = require('../store/process-env');
 const { getCertsAndProxyConfig } = require('./network/cert-utils');
 const { makeAxiosInstance } = require('./network/axios-instance');
+const { interpolateString } = require('./network/interpolate-string');
 const jsyaml = require('js-yaml');
 
 /**
@@ -132,8 +133,159 @@ const getSpecEntriesForCollection = (collectionPath) => {
 /**
  * Get the spec entry for a specific sourceUrl within a collection.
  */
-const getSpecEntryForUrl = (collectionPath) => {
-  return getSpecEntriesForCollection(collectionPath)[0] || null;
+const getSpecEntryForUrl = (collectionPath, sourceUrl) => {
+  const entries = getSpecEntriesForCollection(collectionPath);
+  if (!sourceUrl) {
+    return entries[0] || null;
+  }
+
+  const resolvedSourceUrl = resolveSourceUrl(collectionPath, sourceUrl);
+  return entries.find((entry) => entry.sourceUrl === resolvedSourceUrl) || null;
+};
+
+const normalizeOpenApiAuth = (auth = {}) => ({
+  mode: auth?.mode || 'none',
+  basic: {
+    username: auth?.basic?.username || '',
+    password: auth?.basic?.password || ''
+  },
+  bearer: {
+    token: auth?.bearer?.token || ''
+  },
+  apikey: {
+    key: auth?.apikey?.key || '',
+    value: auth?.apikey?.value || '',
+    placement: auth?.apikey?.placement || 'header'
+  },
+  customHeaders: Array.isArray(auth?.customHeaders)
+    ? auth.customHeaders.map((header) => ({
+        name: header?.name || '',
+        value: header?.value || '',
+        enabled: header?.enabled !== false
+      }))
+    : []
+});
+
+const getOpenApiEntry = (brunoConfig, collectionPath, sourceUrl) => {
+  const entries = Array.isArray(brunoConfig?.openapi) ? brunoConfig.openapi : [];
+  if (!entries.length) {
+    return null;
+  }
+
+  if (!sourceUrl) {
+    return entries[0];
+  }
+
+  const resolvedSourceUrl = resolveSourceUrl(collectionPath, sourceUrl);
+  return entries.find((entry) => entry.sourceUrl === resolvedSourceUrl) || entries[0];
+};
+
+const upsertOpenApiEntry = (brunoConfig, collectionPath, sourceUrl, nextEntry) => {
+  const entries = Array.isArray(brunoConfig?.openapi) ? [...brunoConfig.openapi] : [];
+  const resolvedSourceUrl = resolveSourceUrl(collectionPath, sourceUrl);
+  const existingIndex = entries.findIndex((entry) => entry.sourceUrl === resolvedSourceUrl);
+
+  if (existingIndex >= 0) {
+    entries[existingIndex] = {
+      ...entries[existingIndex],
+      ...nextEntry
+    };
+  } else {
+    entries.push(nextEntry);
+  }
+
+  brunoConfig.openapi = entries;
+};
+
+const removeOpenApiEntry = (brunoConfig, collectionPath, sourceUrl) => {
+  if (!Array.isArray(brunoConfig?.openapi)) {
+    return;
+  }
+
+  const resolvedSourceUrl = resolveSourceUrl(collectionPath, sourceUrl);
+  brunoConfig.openapi = brunoConfig.openapi.filter((entry) => entry.sourceUrl !== resolvedSourceUrl);
+  if (!brunoConfig.openapi.length) {
+    delete brunoConfig.openapi;
+  }
+};
+
+const removeSpecEntryForUrl = (collectionPath, sourceUrl) => {
+  const meta = loadSpecMetadata();
+  const resolvedSourceUrl = resolveSourceUrl(collectionPath, sourceUrl);
+  const existingEntries = meta[collectionPath] || [];
+  const entryToRemove = existingEntries.find((entry) => entry.sourceUrl === resolvedSourceUrl);
+
+  if (!entryToRemove) {
+    return;
+  }
+
+  const specPath = path.join(getSpecsDir(), entryToRemove.filename);
+  if (fs.existsSync(specPath)) {
+    fs.unlinkSync(specPath);
+  }
+
+  const remainingEntries = existingEntries.filter((entry) => entry.sourceUrl !== resolvedSourceUrl);
+  if (remainingEntries.length) {
+    meta[collectionPath] = remainingEntries;
+  } else {
+    delete meta[collectionPath];
+  }
+  saveSpecMetadata(meta);
+};
+
+const buildAuthHeaders = (auth, interpolationOptions) => {
+  const normalizedAuth = normalizeOpenApiAuth(auth);
+  const headers = {};
+
+  switch (normalizedAuth.mode) {
+    case 'basic': {
+      const username = interpolateString(normalizedAuth.basic.username, interpolationOptions) || '';
+      const password = interpolateString(normalizedAuth.basic.password, interpolationOptions) || '';
+      headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+      break;
+    }
+    case 'bearer': {
+      const token = interpolateString(normalizedAuth.bearer.token, interpolationOptions) || '';
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      break;
+    }
+    case 'apikey': {
+      if (normalizedAuth.apikey.placement === 'header' && normalizedAuth.apikey.key) {
+        const key = interpolateString(normalizedAuth.apikey.key, interpolationOptions);
+        const value = interpolateString(normalizedAuth.apikey.value, interpolationOptions);
+        headers[key] = value;
+      }
+      break;
+    }
+    case 'custom-headers': {
+      normalizedAuth.customHeaders.forEach((header) => {
+        if (!header.enabled || !header.name) {
+          return;
+        }
+
+        headers[interpolateString(header.name, interpolationOptions)] = interpolateString(header.value, interpolationOptions);
+      });
+      break;
+    }
+  }
+
+  return headers;
+};
+
+const appendApiKeyQueryParam = (urlString, auth, interpolationOptions) => {
+  const normalizedAuth = normalizeOpenApiAuth(auth);
+  if (normalizedAuth.mode !== 'apikey' || normalizedAuth.apikey.placement !== 'query' || !normalizedAuth.apikey.key) {
+    return urlString;
+  }
+
+  const url = new URL(urlString);
+  url.searchParams.set(
+    interpolateString(normalizedAuth.apikey.key, interpolationOptions),
+    interpolateString(normalizedAuth.apikey.value, interpolationOptions) || ''
+  );
+  return url.toString();
 };
 
 /**
@@ -165,7 +317,7 @@ const isValidOpenApiSpec = (spec) => {
  * Handles proxy/cert resolution for remote URLs.
  * Returns { content, spec } on success, or { error, errorCode? } on failure.
  */
-const fetchSpecFromSource = async ({ collectionUid, collectionPath, sourceUrl, environmentContext = {} }) => {
+const fetchSpecFromSource = async ({ collectionUid, collectionPath, sourceUrl, environmentContext = {}, auth: authOverride }) => {
   const { activeEnvironmentUid, environments = [], runtimeVariables = {}, globalEnvironmentVariables = {} } = environmentContext;
 
   if (!isValidHttpUrl(sourceUrl) && !isLocalFilePath(sourceUrl)) {
@@ -199,12 +351,18 @@ const fetchSpecFromSource = async ({ collectionUid, collectionPath, sourceUrl, e
       globalEnvironmentVariables
     });
     const axiosInstance = makeAxiosInstance({ proxyMode, proxyConfig, httpsAgentRequestFields, interpolationOptions });
+    const { brunoConfig } = loadBrunoConfig(collectionPath);
+    const openApiEntry = getOpenApiEntry(brunoConfig, collectionPath, sourceUrl);
+    const auth = normalizeOpenApiAuth(authOverride || openApiEntry?.auth);
+    const fetchUrl = appendApiKeyQueryParam(cacheBustUrl, auth, interpolationOptions);
+    const authHeaders = buildAuthHeaders(auth, interpolationOptions);
 
     try {
-      const response = await axiosInstance.get(cacheBustUrl, {
+      const response = await axiosInstance.get(fetchUrl, {
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          ...authHeaders
         },
         timeout: 30000,
         transformResponse: [(data) => data]
@@ -372,7 +530,8 @@ const saveOpenApiSpecFile = async ({ collectionPath, content, sourceUrl }) => {
 
   const resolvedUrl = resolveSourceUrl(collectionPath, sourceUrl);
   const meta = loadSpecMetadata();
-  const existingEntry = (meta[collectionPath] || [])[0];
+  const collectionEntries = meta[collectionPath] || [];
+  const existingEntry = collectionEntries.find((entry) => entry.sourceUrl === resolvedUrl);
 
   let filename;
   if (existingEntry) {
@@ -384,8 +543,9 @@ const saveOpenApiSpecFile = async ({ collectionPath, content, sourceUrl }) => {
     filename = `${crypto.randomUUID()}.${ext}`;
   }
 
-  // Always replace with a single entry (one spec per collection for now)
-  meta[collectionPath] = [{ filename, sourceUrl: resolvedUrl }];
+  const nextEntries = collectionEntries.filter((entry) => entry.sourceUrl !== resolvedUrl);
+  nextEntries.push({ filename, sourceUrl: resolvedUrl });
+  meta[collectionPath] = nextEntries;
   saveSpecMetadata(meta);
 
   await writeFile(path.join(specsDir, filename), content);
@@ -395,11 +555,12 @@ const saveOpenApiSpecFile = async ({ collectionPath, content, sourceUrl }) => {
  * Save an OpenAPI spec file and update sync metadata (lastSyncDate, specHash) in brunoConfig.
  * Shared by both the IPC handler (connect flow) and the import flow.
  */
-const saveSpecAndUpdateMetadata = async ({ collectionPath, specContent }) => {
+const saveSpecAndUpdateMetadata = async ({ collectionPath, specContent, sourceUrl }) => {
   const { format, brunoConfig, collectionRoot } = loadBrunoConfig(collectionPath);
-  const sourceUrl = brunoConfig?.openapi?.[0]?.sourceUrl;
+  const openApiEntry = getOpenApiEntry(brunoConfig, collectionPath, sourceUrl);
+  const resolvedSourceUrl = openApiEntry?.sourceUrl || sourceUrl;
 
-  await saveOpenApiSpecFile({ collectionPath, content: specContent, sourceUrl });
+  await saveOpenApiSpecFile({ collectionPath, content: specContent, sourceUrl: resolvedSourceUrl });
 
   let parsedSpec;
   try {
@@ -410,9 +571,13 @@ const saveSpecAndUpdateMetadata = async ({ collectionPath, specContent }) => {
 
   const specHash = generateSpecHash(parsedSpec);
   const lastSyncDate = new Date().toISOString();
-  if (brunoConfig.openapi?.[0]) {
-    brunoConfig.openapi[0] = { ...brunoConfig.openapi[0], lastSyncDate, specHash };
-  };
+  if (openApiEntry) {
+    upsertOpenApiEntry(brunoConfig, collectionPath, resolvedSourceUrl, {
+      ...openApiEntry,
+      lastSyncDate,
+      specHash
+    });
+  }
 
   await saveBrunoConfig(collectionPath, format, brunoConfig, collectionRoot);
 };
@@ -690,10 +855,10 @@ const loadStoredSpecCollection = (collectionPath, brunoConfig) => {
 
 const registerOpenAPISyncIpc = (mainWindow) => {
   ipcMain.handle('renderer:check-openapi-updates', async (event, {
-    collectionUid, collectionPath, sourceUrl, storedSpecHash, environmentContext
+    collectionUid, collectionPath, sourceUrl, storedSpecHash, environmentContext, auth
   }) => {
     try {
-      const result = await fetchSpecFromSource({ collectionUid, collectionPath, sourceUrl, environmentContext });
+      const result = await fetchSpecFromSource({ collectionUid, collectionPath, sourceUrl, environmentContext, auth });
       if (result.error) {
         return { hasUpdates: false, error: result.error, errorCode: result.errorCode };
       }
@@ -706,7 +871,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
   });
 
   ipcMain.handle('renderer:compare-openapi-specs', async (event, {
-    collectionUid, collectionPath, sourceUrl, environmentContext
+    collectionUid, collectionPath, sourceUrl, environmentContext, auth
   }) => {
     try {
       // Compare two OpenAPI specs by converting both to Bruno format and using field-level comparison.
@@ -788,7 +953,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
         };
       };
 
-      const specEntry = getSpecEntryForUrl(collectionPath);
+      const specEntry = getSpecEntryForUrl(collectionPath, sourceUrl);
       const storedSpecPath = specEntry ? path.join(getSpecsDir(), specEntry.filename) : null;
 
       let storedSpec = null;
@@ -799,7 +964,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
         storedSpec = parseSpec(storedContent);
       }
 
-      const fetchResult = await fetchSpecFromSource({ collectionUid, collectionPath, sourceUrl, environmentContext });
+      const fetchResult = await fetchSpecFromSource({ collectionUid, collectionPath, sourceUrl, environmentContext, auth });
       if (fetchResult.error) {
         return {
           isValid: false,
@@ -1460,16 +1625,17 @@ const registerOpenAPISyncIpc = (mainWindow) => {
         await saveOpenApiSpecFile({ collectionPath, content: specContent, sourceUrl });
       }
 
-      if (brunoConfig.openapi?.[0]) {
+      const openApiEntry = getOpenApiEntry(brunoConfig, collectionPath, sourceUrl);
+      if (openApiEntry) {
         const updated = {
-          ...brunoConfig.openapi[0],
+          ...openApiEntry,
           lastSyncDate: new Date().toISOString()
         };
         // Only update specHash when we have a valid newSpec, otherwise preserve existing hash
         if (diff.newSpec) {
           updated.specHash = generateSpecHash(diff.newSpec);
         }
-        brunoConfig.openapi[0] = updated;
+        upsertOpenApiEntry(brunoConfig, collectionPath, sourceUrl, updated);
       }
 
       await saveBrunoConfig(collectionPath, format, brunoConfig, collectionRoot);
@@ -1487,7 +1653,7 @@ const registerOpenAPISyncIpc = (mainWindow) => {
       const { format, brunoConfig, collectionRoot } = loadBrunoConfig(collectionPath);
 
       // Merge new config into existing entry (allowlist keys only)
-      const allowedKeys = ['sourceUrl', 'groupBy', 'lastSyncDate', 'specHash', 'autoCheck', 'autoCheckInterval'];
+      const allowedKeys = ['sourceUrl', 'groupBy', 'lastSyncDate', 'specHash', 'autoCheck', 'autoCheckInterval', 'auth'];
       const sanitizedConfig = {};
       for (const key of allowedKeys) {
         if (key in config) {
@@ -1505,18 +1671,27 @@ const registerOpenAPISyncIpc = (mainWindow) => {
         throw new Error('Invalid URL: only http and https URLs are allowed');
       }
 
+      const previousSourceUrl = config.previousSourceUrl
+        ? resolveSourceUrl(collectionPath, config.previousSourceUrl)
+        : null;
+
       // Resolve to absolute for consistent internal handling (saveBrunoConfig converts back to relative)
       sanitizedConfig.sourceUrl = resolveSourceUrl(collectionPath, sanitizedConfig.sourceUrl);
 
-      // Update or create the single openapi entry
-      const existingEntry = brunoConfig.openapi?.[0];
-      if (existingEntry) {
-        brunoConfig.openapi = [{ ...existingEntry, ...sanitizedConfig }];
-      } else {
-        if (!('autoCheck' in sanitizedConfig)) sanitizedConfig.autoCheck = true;
-        if (!('autoCheckInterval' in sanitizedConfig)) sanitizedConfig.autoCheckInterval = 5;
-        brunoConfig.openapi = [sanitizedConfig];
+      const existingEntry = getOpenApiEntry(brunoConfig, collectionPath, previousSourceUrl || sanitizedConfig.sourceUrl);
+      const nextEntry = existingEntry
+        ? { ...existingEntry, ...sanitizedConfig }
+        : {
+            autoCheck: true,
+            autoCheckInterval: 5,
+            ...sanitizedConfig
+          };
+
+      if (previousSourceUrl && previousSourceUrl !== sanitizedConfig.sourceUrl) {
+        removeOpenApiEntry(brunoConfig, collectionPath, previousSourceUrl);
       }
+
+      upsertOpenApiEntry(brunoConfig, collectionPath, sanitizedConfig.sourceUrl, nextEntry);
 
       // Save updated config
       await saveBrunoConfig(collectionPath, format, brunoConfig, collectionRoot);
@@ -1529,9 +1704,9 @@ const registerOpenAPISyncIpc = (mainWindow) => {
   });
 
   // Save OpenAPI spec file and update sync metadata (used by both connect and import flows)
-  ipcMain.handle('renderer:save-openapi-spec', async (event, { collectionPath, specContent }) => {
+  ipcMain.handle('renderer:save-openapi-spec', async (event, { collectionPath, specContent, sourceUrl }) => {
     try {
-      await saveSpecAndUpdateMetadata({ collectionPath, specContent });
+      await saveSpecAndUpdateMetadata({ collectionPath, specContent, sourceUrl });
       return { success: true };
     } catch (error) {
       console.error('Error saving OpenAPI spec file:', error);
@@ -1572,23 +1747,25 @@ const registerOpenAPISyncIpc = (mainWindow) => {
   });
 
   // Remove OpenAPI sync configuration (disconnect sync)
-  ipcMain.handle('renderer:remove-openapi-sync-config', async (event, { collectionPath, deleteSpecFile = false }) => {
+  ipcMain.handle('renderer:remove-openapi-sync-config', async (event, { collectionPath, deleteSpecFile = true, sourceUrl }) => {
     try {
       const { format, brunoConfig, collectionRoot } = loadBrunoConfig(collectionPath);
 
-      // Remove openapi config
-      delete brunoConfig.openapi;
-      await saveBrunoConfig(collectionPath, format, brunoConfig, collectionRoot);
-
-      // Remove spec file and metadata for this collection
-      const meta = loadSpecMetadata();
-      const entry = (meta[collectionPath] || [])[0];
-      if (entry && deleteSpecFile) {
-        const specPath = path.join(getSpecsDir(), entry.filename);
-        if (fs.existsSync(specPath)) fs.unlinkSync(specPath);
+      if (deleteSpecFile) {
+        if (sourceUrl) {
+          removeSpecEntryForUrl(collectionPath, sourceUrl);
+        } else {
+          cleanupSpecFilesForCollection(collectionPath);
+        }
       }
-      delete meta[collectionPath];
-      saveSpecMetadata(meta);
+
+      if (sourceUrl) {
+        removeOpenApiEntry(brunoConfig, collectionPath, sourceUrl);
+      } else {
+        delete brunoConfig.openapi;
+      }
+
+      await saveBrunoConfig(collectionPath, format, brunoConfig, collectionRoot);
 
       return { success: true };
     } catch (error) {

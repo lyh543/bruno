@@ -49,8 +49,6 @@ import { getRevealInFolderLabel } from 'utils/common/platform';
 import { openDevtoolsAndSwitchToTerminal } from 'utils/terminal';
 import ActionIcon from 'ui/ActionIcon';
 import MenuDropdown from 'ui/MenuDropdown';
-import StatusBadge from 'ui/StatusBadge';
-import { useBetaFeature, BETA_FEATURES } from 'utils/beta-features';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
 import { createEmptyStateMenuItems } from 'utils/collections/emptyStateRequest';
 import useKeybinding from 'hooks/useKeybinding';
@@ -60,7 +58,6 @@ import useKeybinding from 'hooks/useKeybinding';
 const EMPTY_STATE_DELAY_MS = 300;
 
 const Collection = ({ collection, searchText }) => {
-  const isOpenAPISyncEnabled = useBetaFeature(BETA_FEATURES.OPENAPI_SYNC);
   const { dropdownContainerRef } = useSidebarAccordion();
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
@@ -81,6 +78,7 @@ const Collection = ({ collection, searchText }) => {
 
   const isCollectionFocused = useSelector(isTabForItemActive({ itemUid: collection.uid }));
   const { hasCopiedItems } = useSelector((state) => state.app.clipboard);
+  const hasOpenApiUpdates = useSelector((state) => state.openapiSync?.collectionUpdates?.[collection.uid]?.hasUpdates);
   const menuDropdownRef = useRef(null);
 
   // Open the OpenAPI Sync tab
@@ -365,13 +363,12 @@ const Collection = ({ collection, searchText }) => {
         setShowCloneCollectionModalOpen(true);
       }
     },
-    ...(isOpenAPISyncEnabled ? [{
+    ...[{
       id: 'sync-openapi',
       leftSection: OpenAPISyncIcon,
       label: 'OpenAPI',
-      rightSection: <StatusBadge status="info" size="xs">Beta</StatusBadge>,
       onClick: openOpenAPISyncTab
-    }] : []),
+    }],
     ...(hasCopiedItems
       ? [
           {
@@ -499,6 +496,7 @@ const Collection = ({ collection, searchText }) => {
           <div className="ml-1 w-full" id="sidebar-collection-name" title={collection.name}>
             {collection.name}
           </div>
+          {hasOpenApiUpdates ? <span className="openapi-update-dot" aria-label="OpenAPI updates available" /> : null}
           {isLoading ? <IconLoader2 className="animate-spin mx-1" size={18} strokeWidth={1.5} /> : null}
         </div>
         <div>

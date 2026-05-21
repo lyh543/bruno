@@ -11,8 +11,6 @@ import {
   setStoredSpecMeta,
   setDrift
 } from 'providers/ReduxStore/slices/openapi-sync';
-import { fetchAndValidateApiSpecFromUrl } from 'utils/importers/common';
-import { isHttpUrl } from 'utils/url/index';
 import { flattenItems } from 'utils/collections/index';
 import { formatIpcError } from 'utils/common/error';
 import { countEndpoints } from '../utils';
@@ -20,6 +18,7 @@ import { countEndpoints } from '../utils';
 const useOpenAPISync = (collection) => {
   const dispatch = useDispatch();
   const openApiSyncConfig = collection?.brunoConfig?.openapi?.[0];
+  const defaultAutoCheckInterval = useSelector((state) => state.app.preferences?.openapi?.defaultInterval || 5);
 
   // Core state
   const [sourceUrl, setSourceUrl] = useState(openApiSyncConfig?.sourceUrl || '');
@@ -123,8 +122,9 @@ const useOpenAPISync = (collection) => {
     }
   };
 
-  const checkForUpdates = async ({ sourceUrlOverride } = {}) => {
+  const checkForUpdates = async ({ sourceUrlOverride, authOverride } = {}) => {
     const effectiveUrl = (sourceUrlOverride ?? sourceUrl).trim();
+    const effectiveAuth = authOverride ?? openApiSyncConfig?.auth;
     if (!effectiveUrl) {
       setError('Please enter a URL or select a file');
       return;
@@ -141,6 +141,7 @@ const useOpenAPISync = (collection) => {
         collectionUid: collection.uid,
         collectionPath: collection.pathname,
         sourceUrl: effectiveUrl,
+        auth: effectiveAuth,
         environmentContext: {
           activeEnvironmentUid: collection.activeEnvironmentUid,
           environments: collection.environments,
@@ -212,8 +213,9 @@ const useOpenAPISync = (collection) => {
     }
   }, [httpItemCount, isConfigured]);
 
-  const handleConnect = async () => {
-    const trimmedUrl = sourceUrl.trim();
+  const handleConnect = async ({ sourceUrl: sourceUrlOverride, auth: authOverride } = {}) => {
+    const trimmedUrl = (sourceUrlOverride ?? sourceUrl).trim();
+    const effectiveAuth = authOverride ?? openApiSyncConfig?.auth;
     if (!trimmedUrl) {
       setError('Please enter a URL or select a file');
       return;
@@ -224,20 +226,6 @@ const useOpenAPISync = (collection) => {
     setFileNotFound(false);
 
     try {
-      // Validate it's a valid OpenAPI spec before proceeding (URL only; files are validated at picker)
-      if (isHttpUrl(trimmedUrl)) {
-        try {
-          const { specType } = await fetchAndValidateApiSpecFromUrl({ url: trimmedUrl });
-          if (specType !== 'openapi') {
-            setError('The URL does not point to a valid OpenAPI 3.x specification');
-            return;
-          }
-        } catch {
-          setError('The URL does not point to a valid OpenAPI 3.x specification');
-          return;
-        }
-      }
-
       const { ipcRenderer } = window;
 
       // Validate the spec first
@@ -245,6 +233,7 @@ const useOpenAPISync = (collection) => {
         collectionUid: collection.uid,
         collectionPath: collection.pathname,
         sourceUrl: trimmedUrl,
+        auth: effectiveAuth,
         environmentContext: {
           activeEnvironmentUid: collection.activeEnvironmentUid,
           environments: collection.environments,
@@ -266,7 +255,8 @@ const useOpenAPISync = (collection) => {
           sourceUrl: trimmedUrl,
           groupBy: 'tags',
           autoCheck: true,
-          autoCheckInterval: 5
+          autoCheckInterval: defaultAutoCheckInterval,
+          auth: effectiveAuth
         }
       });
 
@@ -286,7 +276,8 @@ const useOpenAPISync = (collection) => {
           // Collection matches — save spec file silently to complete setup
           await ipcRenderer.invoke('renderer:save-openapi-spec', {
             collectionPath: collection.pathname,
-            specContent: result.newSpecContent || JSON.stringify(result.newSpec, null, 2)
+            specContent: result.newSpecContent || JSON.stringify(result.newSpec, null, 2),
+            sourceUrl: trimmedUrl
           });
         }
       }
@@ -352,41 +343,45 @@ const useOpenAPISync = (collection) => {
   };
 
   // Save connection settings from the modal
-  const handleSaveSettings = async ({ sourceUrl: newUrl, autoCheck, autoCheckInterval }) => {
-    const sourceUrlChanged = newUrl !== openApiSyncConfig?.sourceUrl;
-
-    // Validate the spec before saving if source URL changed (URL only; files are validated at picker)
-    // Kept outside try-catch so validation errors propagate to the caller and the modal stays open
-    if (sourceUrlChanged && isHttpUrl(newUrl)) {
-      let specType;
-      try {
-        ({ specType } = await fetchAndValidateApiSpecFromUrl({ url: newUrl }));
-      } catch {
-        toast.error('The URL does not point to a valid OpenAPI 3.x specification');
-        throw new Error('Invalid OpenAPI specification');
-      }
-      if (specType !== 'openapi') {
-        toast.error('The URL does not point to a valid OpenAPI 3.x specification');
-        throw new Error('Invalid OpenAPI specification');
-      }
-    }
+  const handleSaveSettings = async ({ sourceUrl: newUrl, autoCheck, autoCheckInterval, auth }) => {
+    const nextAuth = auth ?? openApiSyncConfig?.auth;
 
     try {
       const { ipcRenderer } = window;
 
+      const validationResult = await ipcRenderer.invoke('renderer:compare-openapi-specs', {
+        collectionUid: collection.uid,
+        collectionPath: collection.pathname,
+        sourceUrl: newUrl,
+        auth: nextAuth,
+        environmentContext: {
+          activeEnvironmentUid: collection.activeEnvironmentUid,
+          environments: collection.environments,
+          runtimeVariables: collection.runtimeVariables,
+          globalEnvironmentVariables: collection.globalEnvironmentVariables
+        }
+      });
+
+      if (validationResult.isValid === false) {
+        toast.error(validationResult.error || 'Invalid OpenAPI specification');
+        throw new Error(validationResult.error || 'Invalid OpenAPI specification');
+      }
+
       await ipcRenderer.invoke('renderer:update-openapi-sync-config', {
         collectionPath: collection.pathname,
         config: {
+          previousSourceUrl: openApiSyncConfig?.sourceUrl,
           sourceUrl: newUrl,
           autoCheck,
-          autoCheckInterval
+          autoCheckInterval,
+          auth: nextAuth
         }
       });
       setSourceUrl(newUrl);
       setFileNotFound(false);
       toast.success('Settings saved');
       // Re-check with new settings — pass newUrl directly to avoid stale closure
-      await checkForUpdates({ sourceUrlOverride: newUrl });
+      await checkForUpdates({ sourceUrlOverride: newUrl, authOverride: nextAuth });
     } catch (err) {
       console.error('Error saving settings:', err);
       toast.error('Failed to save settings');

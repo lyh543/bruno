@@ -96,6 +96,16 @@ const Wrapper = styled.div`
     overflow: hidden;
   }
 
+  .openapi-update-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: ${(props) => props.theme.status.info.text};
+    margin-left: 6px;
+    margin-right: 4px;
+    flex-shrink: 0;
+  }
+
   .indent-block {
     border-right: 1px solid ${(props) => props.theme.sidebar.collection.item.indentBorder};
   }

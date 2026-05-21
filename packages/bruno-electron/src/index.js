@@ -185,20 +185,7 @@ app.on('ready', async () => {
   initializeShellEnv();
 
   if (isDev) {
-    const { installExtension, REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
-    try {
-      const extensions = await installExtension([REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS], {
-        loadExtensionOptions: { allowFileAccess: true }
-      });
-      console.log(`Added Extensions:  ${extensions.map((ext) => ext.name).join(', ')}`);
-      await require('node:timers/promises').setTimeout(1000);
-      session.defaultSession.getAllExtensions().map((ext) => {
-        console.log(`Loading Extension: ${ext.name}`);
-        session.defaultSession.loadExtension(ext.path);
-      });
-    } catch (err) {
-      console.error('An error occurred while loading extensions: ', err);
-    }
+    console.log('Skipping automatic devtools extension installation for Electron 37 compatibility');
   }
 
   // Initialize system proxy cache early (non-blocking)
