@@ -94,6 +94,7 @@ const OpenAPISyncHeader = ({
           <Button
             color="secondary"
             size="sm"
+            className="spec-header-button"
             onClick={onCheck}
             disabled={!canCheck}
             loading={isLoading}
@@ -104,12 +105,13 @@ const OpenAPISyncHeader = ({
           <Button
             color="secondary"
             size="sm"
+            className="spec-header-button"
             onClick={onViewSpec}
           >
             View spec
           </Button>
           <MenuDropdown items={menuItems} placement="bottom-end">
-            <ActionIcon label="More options">
+            <ActionIcon label="More options" className="spec-header-action-icon" size={27}>
               <IconDotsVertical size={16} strokeWidth={2} />
             </ActionIcon>
           </MenuDropdown>

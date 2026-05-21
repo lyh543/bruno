@@ -26,7 +26,7 @@ const ResponsiveTabs = ({
   rightContentExpandedWidth, // Optional: width of the expandable element when expanded
   expandableElementIndex = -1 // Optional: index of the expandable child element (-1 means last child)
 }) => {
-  const [visibleTabKeys, setVisibleTabKeys] = useState([]);
+  const [visibleTabKeys, setVisibleTabKeys] = useState(() => tabs.map((tab) => tab.key));
   const [overflowTabKeys, setOverflowTabKeys] = useState([]);
   const [rightSideExpandable, setRightSideExpandable] = useState(false);
 

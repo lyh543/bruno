@@ -35,8 +35,13 @@ const {
 const DEFAULT_WORKSPACE_NAME = 'My Workspace';
 
 const prepareWorkspaceConfigForClient = (workspaceConfig, workspacePath, isDefault) => {
+  const workspaceName = workspaceConfig.name || workspaceConfig.info?.name;
+  const workspaceType = workspaceConfig.type || workspaceConfig.info?.type;
+
   const config = {
     ...workspaceConfig,
+    name: workspaceName,
+    type: workspaceType,
     collections: resolveAndFilterWorkspaceCollections(workspacePath, workspaceConfig.collections)
   };
 
@@ -48,6 +53,53 @@ const prepareWorkspaceConfigForClient = (workspaceConfig, workspacePath, isDefau
     };
   }
   return config;
+};
+
+const openWorkspaceInWindow = ({ mainWindow, workspaceWatcher, lastOpenedWorkspaces, workspacePath, workspaceConfig }) => {
+  validateWorkspaceConfig(workspaceConfig);
+
+  const workspaceUid = getWorkspaceUid(workspacePath);
+  const isDefault = workspaceUid === 'default';
+  const configForClient = prepareWorkspaceConfigForClient(workspaceConfig, workspacePath, isDefault);
+
+  lastOpenedWorkspaces.add(workspacePath);
+
+  mainWindow.webContents.send('main:workspace-opened', workspacePath, workspaceUid, configForClient);
+
+  if (workspaceWatcher) {
+    workspaceWatcher.addWatcher(mainWindow, workspacePath);
+  }
+
+  return {
+    workspaceConfig: configForClient,
+    workspaceUid,
+    workspacePath
+  };
+};
+
+const initializeWorkspaceAtPath = async (workspacePath, workspaceName) => {
+  validateWorkspaceDirectory(workspacePath);
+
+  if (!fs.existsSync(workspacePath)) {
+    await createDirectory(workspacePath);
+  }
+
+  const collectionsPath = path.join(workspacePath, 'collections');
+  if (!fs.existsSync(collectionsPath)) {
+    await createDirectory(collectionsPath);
+  }
+
+  const resolvedWorkspaceName = workspaceName?.trim() || path.basename(workspacePath) || DEFAULT_WORKSPACE_NAME;
+  const workspaceConfig = createWorkspaceConfig(resolvedWorkspaceName);
+
+  await writeWorkspaceConfig(workspacePath, workspaceConfig);
+
+  const gitignorePath = path.join(workspacePath, '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    await writeFile(gitignorePath, DEFAULT_GITIGNORE);
+  }
+
+  return workspaceConfig;
 };
 
 const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
@@ -74,28 +126,18 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
 
         await createDirectory(path.join(dirPath, 'collections'));
 
-        const workspaceUid = getWorkspaceUid(dirPath);
-        const isDefault = workspaceUid === 'default';
         const workspaceConfig = createWorkspaceConfig(workspaceName);
 
         await writeWorkspaceConfig(dirPath, workspaceConfig);
         await writeFile(path.join(dirPath, '.gitignore'), DEFAULT_GITIGNORE);
 
-        lastOpenedWorkspaces.add(dirPath);
-
-        const configForClient = prepareWorkspaceConfigForClient(workspaceConfig, dirPath, isDefault);
-
-        mainWindow.webContents.send('main:workspace-opened', dirPath, workspaceUid, configForClient);
-
-        if (workspaceWatcher) {
-          workspaceWatcher.addWatcher(mainWindow, dirPath);
-        }
-
-        return {
-          workspaceConfig: configForClient,
-          workspaceUid,
-          workspacePath: dirPath
-        };
+        return openWorkspaceInWindow({
+          mainWindow,
+          workspaceWatcher,
+          lastOpenedWorkspaces,
+          workspacePath: dirPath,
+          workspaceConfig
+        });
       } catch (error) {
         throw error;
       }
@@ -106,25 +148,14 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
       validateWorkspacePath(workspacePath);
 
       const workspaceConfig = readWorkspaceConfig(workspacePath);
-      validateWorkspaceConfig(workspaceConfig);
 
-      const workspaceUid = getWorkspaceUid(workspacePath);
-      const isDefault = workspaceUid === 'default';
-      const configForClient = prepareWorkspaceConfigForClient(workspaceConfig, workspacePath, isDefault);
-
-      lastOpenedWorkspaces.add(workspacePath);
-
-      mainWindow.webContents.send('main:workspace-opened', workspacePath, workspaceUid, configForClient);
-
-      if (workspaceWatcher) {
-        workspaceWatcher.addWatcher(mainWindow, workspacePath);
-      }
-
-      return {
-        workspaceConfig: configForClient,
-        workspaceUid,
-        workspacePath
-      };
+      return openWorkspaceInWindow({
+        mainWindow,
+        workspaceWatcher,
+        lastOpenedWorkspaces,
+        workspacePath,
+        workspaceConfig
+      });
     } catch (error) {
       throw error;
     }
@@ -143,28 +174,42 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
       }
 
       const workspacePath = filePaths[0];
-      validateWorkspacePath(workspacePath);
+      const workspaceFilePath = path.join(workspacePath, 'workspace.yml');
 
-      const workspaceConfig = readWorkspaceConfig(workspacePath);
-      validateWorkspaceConfig(workspaceConfig);
+      if (fs.existsSync(workspaceFilePath)) {
+        validateWorkspacePath(workspacePath);
+        const workspaceConfig = readWorkspaceConfig(workspacePath);
 
-      const workspaceUid = getWorkspaceUid(workspacePath);
-      const isDefault = workspaceUid === 'default';
-      const configForClient = prepareWorkspaceConfigForClient(workspaceConfig, workspacePath, isDefault);
-
-      lastOpenedWorkspaces.add(workspacePath);
-
-      mainWindow.webContents.send('main:workspace-opened', workspacePath, workspaceUid, configForClient);
-
-      if (workspaceWatcher) {
-        workspaceWatcher.addWatcher(mainWindow, workspacePath);
+        return openWorkspaceInWindow({
+          mainWindow,
+          workspaceWatcher,
+          lastOpenedWorkspaces,
+          workspacePath,
+          workspaceConfig
+        });
       }
 
       return {
-        workspaceConfig: configForClient,
-        workspaceUid,
-        workspacePath
+        needsInitialization: true,
+        workspacePath,
+        suggestedWorkspaceName: path.basename(workspacePath) || DEFAULT_WORKSPACE_NAME
       };
+    } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:initialize-workspace-at-path', async (event, workspacePath, workspaceName) => {
+    try {
+      const workspaceConfig = await initializeWorkspaceAtPath(workspacePath, workspaceName);
+
+      return openWorkspaceInWindow({
+        mainWindow,
+        workspaceWatcher,
+        lastOpenedWorkspaces,
+        workspacePath,
+        workspaceConfig
+      });
     } catch (error) {
       throw error;
     }

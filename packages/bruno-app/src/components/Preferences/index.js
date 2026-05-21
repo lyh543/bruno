@@ -2,6 +2,7 @@ import classnames from 'classnames';
 import React from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { updateActivePreferencesTab } from 'providers/ReduxStore/slices/app';
+import OpenAPISyncIcon from 'components/Icons/OpenAPISync';
 import {
   IconSettings,
   IconPalette,
@@ -10,8 +11,7 @@ import {
   IconKeyboard,
   IconZoomQuestion,
   IconSquareLetterB,
-  IconDatabase,
-  IconApi
+  IconDatabase
 } from '@tabler/icons';
 
 import Support from './Support';
@@ -109,7 +109,7 @@ const Preferences = () => {
             Cache
           </div>
           <div className={getTabClassname('openapi')} role="tab" onClick={() => setTab('openapi')}>
-            <IconApi size={16} strokeWidth={1.5} />
+            <OpenAPISyncIcon size={16} />
             OpenAPI
           </div>
           <div className={getTabClassname('support')} role="tab" onClick={() => setTab('support')}>

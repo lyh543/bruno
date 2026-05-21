@@ -221,19 +221,28 @@ const StyledWrapper = styled.div`
       }
     }
 
+    .settings-text-input {
+      margin-top: 8px;
+      max-width: 320px;
+    }
+
     .settings-dropdown {
-      width: 100%;
+      width: fit-content;
+      max-width: 100%;
 
       .dropdown {
-        width: 100%;
+        width: fit-content;
+        max-width: 100%;
       }
 
       .settings-dropdown-trigger {
-        display: flex;
+        display: inline-flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         cursor: pointer;
+        width: fit-content;
+        max-width: 100%;
 
         &:hover {
           border-color: ${(props) => props.theme.input.focusBorder};
@@ -436,6 +445,7 @@ const StyledWrapper = styled.div`
     justify-content: space-between;
     gap: 12px;
     padding: 12px;
+    min-height: 92px;
     border-bottom: 1px solid ${(props) => props.theme.border.border1};
 
     &:last-child {
@@ -452,6 +462,7 @@ const StyledWrapper = styled.div`
     display: flex;
     align-items: center;
     gap: 8px;
+    min-height: 20px;
     margin-bottom: 4px;
   }
 
@@ -464,8 +475,8 @@ const StyledWrapper = styled.div`
   .openapi-source-url {
     font-size: ${(props) => props.theme.font.size.xs};
     color: ${(props) => props.theme.colors.text.muted};
-    font-family: monospace;
     word-break: break-all;
+    min-height: 18px;
     margin-bottom: 6px;
   }
 
@@ -473,6 +484,7 @@ const StyledWrapper = styled.div`
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
+    min-height: 18px;
     font-size: ${(props) => props.theme.font.size.xs};
     color: ${(props) => props.theme.colors.text.muted};
   }
@@ -487,6 +499,7 @@ const StyledWrapper = styled.div`
 
   .status-pill {
     padding: 2px 8px;
+    min-width: 96px;
     border-radius: 999px;
     font-size: ${(props) => props.theme.font.size.xs};
     font-weight: 600;

@@ -23,6 +23,19 @@
 
 > 💡 **LLM 思考要求：** 在你修改任何核心逻辑后，必须主动审查相关测试。如果发现现有测试违反了上述并行或行为原则，请**先批评并重构测试**，再提交逻辑修改。
 
+### 1.1 E2E / Playwright 约定 (E2E / Playwright Guidance)
+
+* **核心指令：** 对 Electron/Workspace 相关流程补 E2E 时，优先复用现有测试驱动方式与最邻近 spec，避免新造 fixture 或引入额外的全局测试钩子。
+* **优先策略：**
+1. 优先把新用例补到相邻行为的现有 spec 文件中。
+2. 对系统目录选择、文件选择等原生弹窗，优先在 Electron 进程里 stub `dialog.showOpenDialog` 等 API，而不是尝试驱动原生窗口。
+3. 断言默认名称时，优先基于真实临时目录 basename 等可观察输入推导，不要硬编码测试运行时会变化的目录名。
+4. 单条本地调试时，优先使用不会启动 HTML report 服务的运行方式，例如：`PLAYWRIGHT_HTML_OPEN=never npx playwright test ... --reporter=list`。
+
+* **禁止事项：**
+* 不要为了覆盖单个 workspace 行为去新增复杂的 test harness 或长期驻留的全局 stub。
+* 不要依赖 Playwright 失败后自动打开/托管 HTML report 作为调试主路径；先保证命令行输出可直接定位失败。
+
 ---
 
 ### 2. UI 变更与组件复用规范 (UI & Component Reuse Standards)
@@ -38,6 +51,7 @@
 1. **全局设计系统 (Design System)：** 优先使用项目中已引入的通用组件库（如项目特定的 UI 库/第三方标准库）。
 2. **局部业务组件：** 在修改特定页面时，先检索当前模块及邻近目录下是否已有现成的局部组件、`DataTemplate` 或布局样式。
 3. **属性配置优先：** 如果现有组件无法完全满足需求，优先通过阅读现有组件的公开属性（Props/Properties）或样式扩展点来达成目标，而不是重写。
+4. **组件目录索引：** 在 `packages/bruno-app/src/components/readme.md` 中先查组件目录与复用建议，再决定是否新增组件。
 
 
 * **🎨 必须手写样式时的唯一例外：**

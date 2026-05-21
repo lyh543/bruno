@@ -365,8 +365,10 @@ const fetchSpecFromSource = async ({ collectionUid, collectionPath, sourceUrl, e
       globalEnvironmentVariables
     });
     const axiosInstance = makeAxiosInstance({ proxyMode, proxyConfig, httpsAgentRequestFields, interpolationOptions });
-    const { brunoConfig } = loadBrunoConfig(collectionPath);
-    const openApiEntry = getOpenApiEntry(brunoConfig, collectionPath, sourceUrl);
+    const brunoConfig = collectionPath && fs.existsSync(collectionPath)
+      ? loadBrunoConfig(collectionPath).brunoConfig
+      : null;
+    const openApiEntry = brunoConfig ? getOpenApiEntry(brunoConfig, collectionPath, sourceUrl) : null;
     const auth = normalizeOpenApiAuth(authOverride || openApiEntry?.auth);
     const fetchUrl = appendApiKeyQueryParam(cacheBustUrl, auth, interpolationOptions);
     const authHeaders = buildAuthHeaders(auth, interpolationOptions);
@@ -1739,10 +1741,10 @@ const registerOpenAPISyncIpc = (mainWindow) => {
 
   // Fetch OpenAPI spec content from a remote URL or local file path
   ipcMain.handle('renderer:fetch-openapi-spec', async (event, {
-    collectionUid, collectionPath, sourceUrl, environmentContext
+    collectionUid, collectionPath, sourceUrl, environmentContext, auth
   }) => {
     try {
-      const result = await fetchSpecFromSource({ collectionUid, collectionPath, sourceUrl, environmentContext });
+      const result = await fetchSpecFromSource({ collectionUid, collectionPath, sourceUrl, environmentContext, auth });
       if (result.error) return { error: result.error, errorCode: result.errorCode };
       if (!isValidOpenApiSpec(result.spec)) {
         const error = result.spec?.swagger

@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import Button from 'ui/Button';
 import Modal from 'components/Modal';
+import SettingsInput from 'components/SettingsInput';
 import { isHttpUrl } from 'utils/url';
 import { parseFileAsJsonOrYaml } from 'utils/importers/file-reader';
 import { isOpenApiSpec } from 'utils/importers/openapi-collection';
@@ -10,9 +11,11 @@ import SettingsDropdown from 'components/OpenAPISyncTab/SettingsDropdown';
 import SourceModeToggle from 'components/OpenAPISyncTab/SourceModeToggle';
 
 const INTERVALS = [5, 15, 30, 60];
+const CREATE_NEW_COLLECTION_VALUE = '__create_new_collection__';
 
 const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose }) => {
-  const [collectionUid, setCollectionUid] = useState(collections[0]?.uid || '');
+  const [collectionUid, setCollectionUid] = useState(collections[0]?.uid || CREATE_NEW_COLLECTION_VALUE);
+  const [newCollectionName, setNewCollectionName] = useState('');
   const [mode, setMode] = useState('url');
   const [url, setUrl] = useState('');
   const [filePath, setFilePath] = useState('');
@@ -26,16 +29,24 @@ const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose 
     () => collections.find((collection) => collection.uid === collectionUid) || null,
     [collections, collectionUid]
   );
+  const isCreatingNewCollection = collectionUid === CREATE_NEW_COLLECTION_VALUE;
 
   const sourceUrl = mode === 'url' ? url.trim() : filePath;
-  const canSave = selectedCollection && (mode === 'url' ? isHttpUrl(sourceUrl) : !!sourceUrl);
-  const collectionOptions = useMemo(() => collections.map((collection) => ({
-    value: collection.uid,
-    label: collection.name
-  })), [collections]);
+  const canSave = (isCreatingNewCollection ? !!newCollectionName.trim() : !!selectedCollection)
+    && (mode === 'url' ? isHttpUrl(sourceUrl) : !!sourceUrl);
+  const collectionOptions = useMemo(() => ([
+    ...collections.map((collection) => ({
+      value: collection.uid,
+      label: collection.name
+    })),
+    {
+      value: CREATE_NEW_COLLECTION_VALUE,
+      label: 'Create New Collection...'
+    }
+  ]), [collections]);
 
   const handleSubmit = async () => {
-    if (!selectedCollection || !sourceUrl) {
+    if ((!selectedCollection && !isCreatingNewCollection) || !sourceUrl) {
       return;
     }
 
@@ -43,6 +54,7 @@ const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose 
     try {
       await onSave({
         collection: selectedCollection,
+        newCollectionName: newCollectionName.trim(),
         sourceUrl,
         autoCheck,
         autoCheckInterval,
@@ -68,22 +80,34 @@ const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose 
               onChange={setCollectionUid}
               placeholder="Select a collection"
             />
+            {isCreatingNewCollection && (
+              <SettingsInput
+                id="new-openapi-collection-name"
+                variant="modal"
+                wrapperClassName="mt-2"
+                compact
+                value={newCollectionName}
+                onChange={(event) => setNewCollectionName(event.target.value)}
+                placeholder="New collection name"
+              />
+            )}
           </div>
 
           <div className="settings-field">
-            <label className="settings-label">Spec Source</label>
             <SourceModeToggle value={mode} onChange={setMode} className="mb-2" />
 
             {mode === 'url' ? (
-              <input
-                className="settings-input"
-                type="text"
+              <SettingsInput
+                id="openapi-spec-source"
+                label="Spec Source"
+                variant="modal"
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
                 placeholder="https://api.example.com/openapi.json"
               />
             ) : (
               <>
+                <label className="settings-label">Spec Source</label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -111,7 +135,7 @@ const AddDataSourceModal = ({ collections, defaultInterval = 5, onSave, onClose 
                   }}
                 />
                 <button type="button" className="settings-input file-pick-btn" onClick={() => fileInputRef.current?.click()}>
-                  {filePath ? filePath.split(/[\\/]/).pop() : 'Select File'}
+                  {filePath || 'Select File'}
                 </button>
               </>
             )}

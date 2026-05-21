@@ -6,9 +6,13 @@ import { savePreferences } from 'providers/ReduxStore/slices/app';
 import { addTab } from 'providers/ReduxStore/slices/tabs';
 import { checkCollectionForUpdates, setPollingEnabled } from 'providers/ReduxStore/slices/openapi-sync';
 import { mountCollection } from 'providers/ReduxStore/slices/collections/actions';
-import { normalizePath } from 'utils/common/path';
+import path, { normalizePath } from 'utils/common/path';
+import { createCollectionInWorkspace } from 'providers/ReduxStore/slices/workspaces/actions';
 import { flattenItems } from 'utils/collections';
+import { sanitizeName, validateName, validateNameError } from 'utils/common/regex';
 import AddDataSourceModal from './AddDataSourceModal';
+
+const isHttpUrl = (value = '') => /^https?:\/\//i.test(value);
 
 const DEFAULT_INTERVAL_OPTIONS = [5, 15, 30, 60];
 
@@ -61,6 +65,14 @@ const OpenAPI = () => {
         id: `${collection.uid}:${index}`,
         collection,
         entry,
+        resolvedSourceUrl: isHttpUrl(entry.sourceUrl)
+          ? entry.sourceUrl
+          : path.isAbsolute(entry.sourceUrl)
+            ? entry.sourceUrl
+            : path.join(collection.pathname, entry.sourceUrl),
+        effectiveLastSyncDate: updateState.lastChecked && (!entry.lastSyncDate || updateState.lastChecked > new Date(entry.lastSyncDate).getTime())
+          ? new Date(updateState.lastChecked).toISOString()
+          : entry.lastSyncDate,
         index,
         requestCount,
         specEndpointCount: meta.endpointCount,
@@ -90,28 +102,59 @@ const OpenAPI = () => {
     });
   };
 
-  const handleAddSource = async ({ collection, sourceUrl, autoCheck, autoCheckInterval, auth }) => {
+  const handleAddSource = async ({ collection, newCollectionName, sourceUrl, autoCheck, autoCheckInterval, auth }) => {
     const { ipcRenderer } = window;
-    const validationResult = await ipcRenderer.invoke('renderer:compare-openapi-specs', {
-      collectionUid: collection.uid,
-      collectionPath: collection.pathname,
-      sourceUrl,
-      auth,
-      environmentContext: {
-        activeEnvironmentUid: collection.activeEnvironmentUid,
-        environments: collection.environments,
-        runtimeVariables: collection.runtimeVariables,
-        globalEnvironmentVariables: collection.globalEnvironmentVariables
-      }
-    });
+    const isCreatingNewCollection = !collection;
+    const trimmedCollectionName = newCollectionName?.trim();
 
-    if (validationResult.isValid === false) {
-      toast.error(validationResult.error || 'Invalid OpenAPI specification');
-      throw new Error(validationResult.error || 'Invalid OpenAPI specification');
+    if (isCreatingNewCollection) {
+      if (!trimmedCollectionName) {
+        toast.error('Collection name is required');
+        throw new Error('Collection name is required');
+      }
+
+      if (!validateName(trimmedCollectionName)) {
+        const validationError = validateNameError(trimmedCollectionName);
+        toast.error(validationError);
+        throw new Error(validationError);
+      }
+    }
+
+    const validationResult = isCreatingNewCollection
+      ? await ipcRenderer.invoke('renderer:fetch-openapi-spec', {
+          sourceUrl,
+          auth
+        })
+      : await ipcRenderer.invoke('renderer:compare-openapi-specs', {
+          collectionUid: collection.uid,
+          collectionPath: collection.pathname,
+          sourceUrl,
+          auth,
+          environmentContext: {
+            activeEnvironmentUid: collection.activeEnvironmentUid,
+            environments: collection.environments,
+            runtimeVariables: collection.runtimeVariables,
+            globalEnvironmentVariables: collection.globalEnvironmentVariables
+          }
+        });
+
+    const validationError = validationResult.error || (validationResult.isValid === false ? 'Invalid OpenAPI specification' : null);
+    if (validationError) {
+      toast.error(validationError);
+      throw new Error(validationError);
+    }
+
+    let targetCollection = collection;
+    let targetCollectionPath = collection?.pathname;
+
+    if (isCreatingNewCollection) {
+      await dispatch(createCollectionInWorkspace(trimmedCollectionName, sanitizeName(trimmedCollectionName), null, activeWorkspaceUid));
+      targetCollectionPath = path.join(activeWorkspace.pathname, 'collections', sanitizeName(trimmedCollectionName));
+      targetCollection = { name: trimmedCollectionName, pathname: targetCollectionPath };
     }
 
     await ipcRenderer.invoke('renderer:update-openapi-sync-config', {
-      collectionPath: collection.pathname,
+      collectionPath: targetCollectionPath,
       config: {
         sourceUrl,
         autoCheck,
@@ -120,15 +163,18 @@ const OpenAPI = () => {
       }
     });
 
-    toast.success(`Added OpenAPI source to ${collection.name}`);
+    toast.success(`Added OpenAPI source to ${targetCollection.name}`);
   };
 
-  const openSyncTab = (collection) => {
-    dispatch(mountCollection({
-      collectionUid: collection.uid,
-      collectionPathname: collection.pathname,
-      brunoConfig: collection.brunoConfig
-    }));
+  const openSyncTab = async (collection) => {
+    if (collection.mountStatus !== 'mounted') {
+      await dispatch(mountCollection({
+        collectionUid: collection.uid,
+        collectionPathname: collection.pathname,
+        brunoConfig: collection.brunoConfig
+      }));
+    }
+
     dispatch(addTab({
       uid: `${collection.uid}-openapi-sync`,
       collectionUid: collection.uid,
@@ -143,6 +189,14 @@ const OpenAPI = () => {
       return;
     }
 
+    await window.ipcRenderer.invoke('renderer:update-openapi-sync-config', {
+      collectionPath: collection.pathname,
+      config: {
+        sourceUrl: collection?.brunoConfig?.openapi?.[0]?.sourceUrl,
+        lastSyncDate: new Date().toISOString()
+      }
+    });
+
     if (result?.hasUpdates) {
       toast.success(`OpenAPI updates found for ${collection.name}`);
       return;
@@ -155,7 +209,7 @@ const OpenAPI = () => {
     <div className="w-full openapi-preferences">
       <div className="preferences-header-row">
         <div className="section-header">OpenAPI Sync</div>
-        <Button size="sm" onClick={() => setShowAddSourceModal(true)} disabled={!activeWorkspaceCollections.length}>Add Data Source</Button>
+        <Button size="sm" onClick={() => setShowAddSourceModal(true)} disabled={!activeWorkspace}>Add Data Source</Button>
       </div>
 
       <div className="preference-card">
@@ -195,30 +249,30 @@ const OpenAPI = () => {
         <div className="preference-card">
           <div className="preference-card-copy">No OpenAPI data sources are configured in the active workspace yet.</div>
           <div className="preference-actions-row">
-            <Button size="sm" onClick={() => setShowAddSourceModal(true)} disabled={!activeWorkspaceCollections.length}>Add Data Source</Button>
+            <Button size="sm" onClick={() => setShowAddSourceModal(true)} disabled={!activeWorkspace}>Add Data Source</Button>
           </div>
         </div>
       ) : (
         <div className="preference-card openapi-source-list">
-          {dataSources.map(({ id, collection, entry, index, requestCount, specEndpointCount, status, isPrimary }) => (
+          {dataSources.map(({ id, collection, entry, resolvedSourceUrl, effectiveLastSyncDate, index, requestCount, specEndpointCount, status, isPrimary }) => (
             <div key={id} className="openapi-source-row">
               <div className="openapi-source-main">
                 <div className="openapi-source-title-row">
                   <div className="openapi-source-title">{collection.name}</div>
                   <span className={`status-pill ${status.toLowerCase().replace(/\s+/g, '-')}`}>{status}</span>
                 </div>
-                <div className="openapi-source-url">{entry.sourceUrl}</div>
+                <div className="openapi-source-url" title={resolvedSourceUrl}>{resolvedSourceUrl}</div>
                 <div className="openapi-source-meta">
                   <span>{isPrimary ? 'Primary source' : `Source #${index + 1}`}</span>
                   <span>{entry.autoCheck === false ? 'Manual checks only' : `Every ${entry.autoCheckInterval || defaultInterval} min`}</span>
-                  <span>{entry.lastSyncDate ? `Last sync ${new Date(entry.lastSyncDate).toLocaleString()}` : 'Never synced'}</span>
+                  <span>{effectiveLastSyncDate ? `Last sync ${new Date(effectiveLastSyncDate).toLocaleString()}` : 'Never synced'}</span>
                   <span>Spec endpoints {specEndpointCount ?? '-'}</span>
                   <span>Collection requests {requestCount}</span>
                 </div>
               </div>
               <div className="openapi-source-actions">
                 <button type="button" className="preferences-link-button" onClick={() => openSyncTab(collection)}>
-                  {isPrimary ? 'Settings' : 'Open'}
+                  {isPrimary ? 'Detail' : 'Open'}
                 </button>
                 <button
                   type="button"

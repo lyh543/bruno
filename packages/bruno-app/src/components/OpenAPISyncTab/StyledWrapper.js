@@ -131,6 +131,21 @@ const StyledWrapper = styled.div`
       align-items: center;
       gap: 6px;
       flex-shrink: 0;
+
+      .spec-header-button {
+        flex-shrink: 0;
+
+        button {
+          min-height: 27px;
+          height: 27px;
+          padding-top: 0;
+          padding-bottom: 0;
+        }
+      }
+
+      .spec-header-action-icon {
+        flex-shrink: 0;
+      }
     }
 
     .spec-url-label {
@@ -2348,18 +2363,22 @@ const StyledWrapper = styled.div`
   }
 
   .settings-dropdown {
-    width: 100%;
+    width: fit-content;
+    max-width: 100%;
 
     .dropdown {
-      width: 100%;
+      width: fit-content;
+      max-width: 100%;
     }
 
     .settings-dropdown-trigger {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
       cursor: pointer;
+      width: fit-content;
+      max-width: 100%;
 
       &:hover {
         border-color: ${(props) => props.theme.input.focusBorder};
@@ -2379,6 +2398,11 @@ const StyledWrapper = styled.div`
       fill: ${(props) => props.theme.colors.text.muted};
       flex-shrink: 0;
     }
+  }
+
+  .settings-text-input {
+    margin-top: 8px;
+    max-width: 320px;
   }
 
   .auth-helper-text {

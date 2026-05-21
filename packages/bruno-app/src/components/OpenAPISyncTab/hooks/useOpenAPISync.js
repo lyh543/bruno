@@ -156,6 +156,15 @@ const useOpenAPISync = (collection) => {
         return;
       }
 
+      await ipcRenderer.invoke('renderer:update-openapi-sync-config', {
+        collectionPath: collection.pathname,
+        config: {
+          sourceUrl: effectiveUrl,
+          lastSyncDate: new Date().toISOString(),
+          auth: effectiveAuth
+        }
+      });
+
       updateDrift({ specDrift: result, lastChecked: Date.now() });
       updateStoredSpec(result.storedSpec || null);
 

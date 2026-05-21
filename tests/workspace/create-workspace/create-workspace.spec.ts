@@ -730,5 +730,56 @@ test.describe('Create Workspace', () => {
 
       await closeElectronApp(app);
     });
+
+    test('should prompt to initialize an empty folder as a workspace and persist the entered name', async ({ launchElectronApp, createTmpDir }) => {
+      const userDataPath = await createTmpDir('open-empty-folder-user-data');
+      const emptyWorkspacePath = await createTmpDir('empty-workspace-folder');
+      const defaultWorkspaceName = path.basename(emptyWorkspacePath);
+
+      const app = await launchElectronApp({ userDataPath });
+      const page = await waitForReadyPage(app);
+
+      await test.step('Stub the open-workspace dialog to select an empty folder', async () => {
+        await app.evaluate(
+          ({ dialog }, targetPath: string) => {
+            (dialog as { showOpenDialog: typeof dialog.showOpenDialog }).showOpenDialog = () =>
+              Promise.resolve({ canceled: false, filePaths: [targetPath] });
+          },
+          emptyWorkspacePath
+        );
+      });
+
+      await test.step('Open workspace and verify the initialize modal appears', async () => {
+        await page.getByTestId('workspace-menu').click();
+        await page.locator('.dropdown-item').filter({ hasText: 'Open workspace' }).click();
+
+        const modal = page.locator('.bruno-modal-card').filter({ hasText: 'Initialize Workspace' });
+        await expect(modal).toBeVisible({ timeout: 5000 });
+        await expect(modal.locator('#initialize-workspace-name')).toHaveValue(defaultWorkspaceName);
+        await expect(modal.locator('#initialize-workspace-path')).toBeDisabled();
+        await expect(modal.locator('#initialize-workspace-path')).toHaveValue(emptyWorkspacePath);
+      });
+
+      await test.step('Edit the workspace name and confirm initialization', async () => {
+        const modal = page.locator('.bruno-modal-card').filter({ hasText: 'Initialize Workspace' });
+        await modal.locator('#initialize-workspace-name').fill('Opened Empty Workspace');
+        await modal.getByRole('button', { name: 'Initialize Workspace' }).click();
+
+        await expect(page.getByText('Workspace initialized successfully')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('workspace-name')).toHaveText('Opened Empty Workspace', { timeout: 5000 });
+      });
+
+      await test.step('Verify the selected folder was initialized as a workspace', async () => {
+        const ymlPath = path.join(emptyWorkspacePath, 'workspace.yml');
+        expect(fs.existsSync(ymlPath)).toBe(true);
+        expect(fs.existsSync(path.join(emptyWorkspacePath, 'collections'))).toBe(true);
+
+        const config = yaml.load(fs.readFileSync(ymlPath, 'utf8')) as WorkspaceConfig;
+        expect(config?.info?.name).toBe('Opened Empty Workspace');
+        expect(config?.info?.type).toBe('workspace');
+      });
+
+      await closeElectronApp(app);
+    });
   });
 });

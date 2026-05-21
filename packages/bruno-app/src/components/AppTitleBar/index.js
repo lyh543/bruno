@@ -6,12 +6,14 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { savePreferences, showManageWorkspacePage, toggleSidebarCollapse } from 'providers/ReduxStore/slices/app';
 import { closeConsole, openConsole } from 'providers/ReduxStore/slices/logs';
-import { createWorkspaceWithUniqueName, openWorkspaceDialog, switchWorkspace } from 'providers/ReduxStore/slices/workspaces/actions';
+import { createWorkspaceWithUniqueName, initializeWorkspaceAtPathAction, openWorkspaceDialog, switchWorkspace } from 'providers/ReduxStore/slices/workspaces/actions';
 import { sortWorkspaces, toggleWorkspacePin } from 'utils/workspaces';
 import { focusTab } from 'providers/ReduxStore/slices/tabs';
 import get from 'lodash/get';
 
 import Bruno from 'components/Bruno';
+import Modal from 'components/Modal';
+import SettingsInput from 'components/SettingsInput';
 import MenuDropdown from 'ui/MenuDropdown';
 import ActionIcon from 'ui/ActionIcon';
 import IconSidebarToggle from 'components/Icons/IconSidebarToggle';
@@ -120,6 +122,8 @@ const AppTitleBar = () => {
 
   const [createWorkspaceModalOpen, setCreateWorkspaceModalOpen] = useState(false);
   const [importWorkspaceModalOpen, setImportWorkspaceModalOpen] = useState(false);
+  const [pendingWorkspaceInitialization, setPendingWorkspaceInitialization] = useState(null);
+  const [pendingWorkspaceName, setPendingWorkspaceName] = useState('');
 
   const WorkspaceName = forwardRef((props, ref) => {
     return (
@@ -144,12 +148,43 @@ const AppTitleBar = () => {
 
   const handleOpenWorkspace = async () => {
     try {
-      await dispatch(openWorkspaceDialog());
-      toast.success('Workspace opened successfully');
+      const result = await dispatch(openWorkspaceDialog());
+
+      if (result?.needsInitialization) {
+        setPendingWorkspaceInitialization(result);
+        setPendingWorkspaceName(result.suggestedWorkspaceName || '');
+        return;
+      }
+
+      if (result?.workspaceUid) {
+        toast.success('Workspace opened successfully');
+      }
     } catch (error) {
       toast.error(error.message || 'Failed to open workspace');
     }
   };
+
+  const handleCancelWorkspaceInitialization = useCallback(() => {
+    setPendingWorkspaceInitialization(null);
+    setPendingWorkspaceName('');
+  }, []);
+
+  const handleConfirmWorkspaceInitialization = useCallback(async () => {
+    const workspaceName = pendingWorkspaceName.trim();
+
+    if (!pendingWorkspaceInitialization?.workspacePath || !workspaceName) {
+      return;
+    }
+
+    try {
+      await dispatch(initializeWorkspaceAtPathAction(pendingWorkspaceInitialization.workspacePath, workspaceName));
+      setPendingWorkspaceInitialization(null);
+      setPendingWorkspaceName('');
+      toast.success('Workspace initialized successfully');
+    } catch (error) {
+      toast.error(error.message || 'Failed to initialize workspace');
+    }
+  }, [dispatch, pendingWorkspaceInitialization, pendingWorkspaceName]);
 
   const handleCreateWorkspace = useCallback(async () => {
     const defaultLocation = get(preferences, 'general.defaultLocation', '');
@@ -260,6 +295,40 @@ const AppTitleBar = () => {
       )}
       {importWorkspaceModalOpen && (
         <ImportWorkspace onClose={() => setImportWorkspaceModalOpen(false)} />
+      )}
+      {pendingWorkspaceInitialization && (
+        <Modal
+          size="md"
+          title="Initialize Workspace"
+          confirmText="Initialize Workspace"
+          cancelText="No"
+          handleConfirm={handleConfirmWorkspaceInitialization}
+          handleCancel={handleCancelWorkspaceInitialization}
+          confirmDisabled={!pendingWorkspaceName.trim()}
+        >
+          <div className="text-sm leading-relaxed">
+            <p className="m-0">No <span className="font-mono">workspace.yml</span> was found in this folder.</p>
+            <p className="mt-3 mb-0">Initialize a new Bruno workspace here?</p>
+            <SettingsInput
+              id="initialize-workspace-name"
+              label="Workspace Name"
+              variant="modal"
+              wrapperClassName="mt-3"
+              value={pendingWorkspaceName}
+              onChange={(event) => setPendingWorkspaceName(event.target.value)}
+              autoFocus
+            />
+            <SettingsInput
+              id="initialize-workspace-path"
+              label="Workspace Path"
+              variant="modal"
+              wrapperClassName="mt-3"
+              value={pendingWorkspaceInitialization.workspacePath}
+              disabled
+              onChange={() => {}}
+            />
+          </div>
+        </Modal>
       )}
 
       <div className="titlebar-content">
