@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * *'
+  push:
+    tags:
+      - 'nightly-*'
 
 permissions:
   contents: write
@@ -100,7 +103,11 @@ jobs:
         shell: bash
         run: |
           stamp="$(date -u +%Y%m%d)"
-          tag="nightly-${stamp}-${GITHUB_RUN_NUMBER}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="nightly-${stamp}-${GITHUB_RUN_NUMBER}"
+          fi
           name="Nightly ${stamp}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "name=${name}" >> "$GITHUB_OUTPUT"
