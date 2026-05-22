@@ -21,23 +21,91 @@ jobs:
     steps:
       - name: Resolve upstream version inputs
         id: metadata
-        shell: bash
         run: |
-          upstream_sha="$(git ls-remote https://github.com/usebruno/bruno.git HEAD | awk '{print $1}')"
-          upstream_sha_short="${upstream_sha:0:8}"
-          upstream_tag="$(git ls-remote --tags --sort=-version:refname https://github.com/usebruno/bruno.git 'v*' | grep -v '\^{}' | head -n1 | sed 's#.*refs/tags/##')"
-          base_version="${upstream_tag#v}"
-          build_date="$(date -u +%Y%m%d)"
-          nightly_version="${base_version}-nightly.${build_date}.${upstream_sha_short}"
-          nightly_tag="nightly-${build_date}-${GITHUB_RUN_NUMBER}"
-          nightly_name="Nightly ${build_date} (${upstream_tag} / ${upstream_sha_short})"
+          node <<'EOF'
+          const fs = require('fs');
+          const https = require('https');
 
-          echo "upstream_tag=${upstream_tag}" >> "$GITHUB_OUTPUT"
-          echo "upstream_sha=${upstream_sha}" >> "$GITHUB_OUTPUT"
-          echo "upstream_sha_short=${upstream_sha_short}" >> "$GITHUB_OUTPUT"
-          echo "nightly_version=${nightly_version}" >> "$GITHUB_OUTPUT"
-          echo "nightly_tag=${nightly_tag}" >> "$GITHUB_OUTPUT"
-          echo "nightly_name=${nightly_name}" >> "$GITHUB_OUTPUT"
+          function fetchJson(url) {
+            return new Promise((resolve, reject) => {
+              https
+                .get(url, {
+                  headers: {
+                    'User-Agent': 'GitHub-Copilot',
+                    Accept: 'application/vnd.github+json'
+                  }
+                }, (response) => {
+                  let body = '';
+
+                  response.on('data', (chunk) => {
+                    body += chunk;
+                  });
+
+                  response.on('end', () => {
+                    if (response.statusCode && response.statusCode >= 400) {
+                      reject(new Error(`Request to ${url} failed with ${response.statusCode}: ${body}`));
+                      return;
+                    }
+
+                    resolve(JSON.parse(body));
+                  });
+                })
+                .on('error', reject);
+            });
+          }
+
+          function compareSemverDesc(left, right) {
+            const leftParts = left.replace(/^v/, '').split('.').map(Number);
+            const rightParts = right.replace(/^v/, '').split('.').map(Number);
+
+            for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+              const leftValue = leftParts[index] || 0;
+              const rightValue = rightParts[index] || 0;
+
+              if (leftValue !== rightValue) {
+                return rightValue - leftValue;
+              }
+            }
+
+            return 0;
+          }
+
+          async function main() {
+            const head = await fetchJson('https://api.github.com/repos/usebruno/bruno/commits/main');
+            const tags = await fetchJson('https://api.github.com/repos/usebruno/bruno/tags?per_page=100');
+            const semanticTags = tags
+              .map((tag) => tag.name)
+              .filter((tag) => /^v\d+\.\d+\.\d+$/.test(tag))
+              .sort(compareSemverDesc);
+
+            const upstreamSha = head.sha;
+            const upstreamShaShort = upstreamSha.slice(0, 8);
+            const upstreamTag = semanticTags[0] || 'v0.0.0';
+            const baseVersion = upstreamTag.replace(/^v/, '');
+            const now = new Date();
+            const buildDate = [
+              now.getUTCFullYear(),
+              String(now.getUTCMonth() + 1).padStart(2, '0'),
+              String(now.getUTCDate()).padStart(2, '0')
+            ].join('');
+            const nightlyVersion = `${baseVersion}-nightly.${buildDate}.${upstreamShaShort}`;
+            const nightlyTag = `nightly-${buildDate}-${process.env.GITHUB_RUN_NUMBER}`;
+            const nightlyName = `Nightly ${buildDate} (${upstreamTag} / ${upstreamShaShort})`;
+            const output = process.env.GITHUB_OUTPUT;
+
+            fs.appendFileSync(output, `upstream_tag=${upstreamTag}\n`);
+            fs.appendFileSync(output, `upstream_sha=${upstreamSha}\n`);
+            fs.appendFileSync(output, `upstream_sha_short=${upstreamShaShort}\n`);
+            fs.appendFileSync(output, `nightly_version=${nightlyVersion}\n`);
+            fs.appendFileSync(output, `nightly_tag=${nightlyTag}\n`);
+            fs.appendFileSync(output, `nightly_name=${nightlyName}\n`);
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          EOF
 
   build-electron:
     name: Build Electron (${{ matrix.name }})
