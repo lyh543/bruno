@@ -61,6 +61,18 @@ function getRequiredEnv(name) {
   return value;
 }
 
+function getDistScriptName(targetOs) {
+  if (targetOs === 'mac') {
+    return 'dist:mac';
+  }
+
+  if (targetOs === 'win') {
+    return 'dist:win';
+  }
+
+  return 'dist:linux';
+}
+
 async function prepareWebAssets() {
   await deleteFileIfExists('packages/bruno-electron/out');
   await deleteFileIfExists('packages/bruno-electron/web');
@@ -118,8 +130,8 @@ async function main() {
 
     await prepareWebAssets();
 
-    const configPath = 'packages/bruno-electron/electron-builder-config.ci.js';
-    const buildCommand = `npx electron-builder --${targetOs} --${targetArch} --config ${configPath} --projectDir packages/bruno-electron`;
+    const distScriptName = getDistScriptName(targetOs);
+    const buildCommand = `npm run ${distScriptName} --workspace=packages/bruno-electron -- --${targetArch} --config electron-builder-config.ci.js`;
 
     console.log(`Building Electron for ${targetOs}/${targetArch}`);
     await execCommandWithOutput(buildCommand);
