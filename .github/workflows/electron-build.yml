@@ -1,0 +1,75 @@
+name: Electron Build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, lyh543-main, 'release/v*']
+
+jobs:
+  build-electron:
+    name: Build Electron (${{ matrix.name }})
+    timeout-minutes: 120
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-24.04
+            shell: bash
+            arch: x64
+            target_os: linux
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+            shell: bash
+            arch: arm64
+            target_os: linux
+          - name: Windows x64
+            runner: windows-latest
+            shell: pwsh
+            arch: x64
+            target_os: win
+          - name: Windows arm64
+            runner: windows-11-arm
+            shell: pwsh
+            arch: arm64
+            target_os: win
+          - name: macOS x64
+            runner: macos-13
+            shell: bash
+            arch: x64
+            target_os: mac
+          - name: macOS arm64
+            runner: macos-15
+            shell: bash
+            arch: arm64
+            target_os: mac
+
+    env:
+      BUILD_TARGET_OS: ${{ matrix.target_os }}
+      BUILD_TARGET_ARCH: ${{ matrix.arch }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node Dependencies
+        uses: ./.github/actions/common/setup-node-deps
+        with:
+          shell: ${{ matrix.shell }}
+
+      - name: Build web assets
+        shell: ${{ matrix.shell }}
+        run: npm run build:web
+
+      - name: Build Electron package
+        shell: ${{ matrix.shell }}
+        run: node ./scripts/build-electron-ci.js
+
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: electron-${{ matrix.target_os }}-${{ matrix.arch }}
+          path: packages/bruno-electron/out/**/*
+          if-no-files-found: error
+          retention-days: 14
