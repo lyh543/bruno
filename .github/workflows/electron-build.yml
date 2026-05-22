@@ -216,7 +216,8 @@ jobs:
             Fork commit: `${{ github.sha }}`
             Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            ## ⚠️ macOS Installation Notes ("App is damaged" or DMG won't open)
+            <details>
+            <summary>⚠️ macOS Installation Notes ("App is damaged" or DMG won't open)</summary>
 
             If you are downloading the macOS builds (especially the `arm64` version), you might encounter issues where macOS claims the app is **"damaged"** or the `.dmg` file **fails to open/mount** upon double-clicking.
 
@@ -263,3 +264,4 @@ jobs:
             ```
 
             Wait 5 seconds, then double-click the `.dmg` file again.
+            </details>
