@@ -58,11 +58,9 @@ jobs:
           shell: ${{ matrix.shell }}
 
       - name: Build web assets
-        shell: ${{ matrix.shell }}
         run: npm run build:web
 
       - name: Build Electron package
-        shell: ${{ matrix.shell }}
         run: node ./scripts/build-electron-ci.js
 
       - name: Upload Electron artifacts
