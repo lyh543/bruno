@@ -110,7 +110,10 @@ jobs:
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: nightly-artifacts/**/*
+          files: |
+            nightly-artifacts/**/*.AppImage
+            nightly-artifacts/**/*_mac.dmg
+            nightly-artifacts/**/*_win.exe
           body: |
             Automated nightly Electron build.
 
